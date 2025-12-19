@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Add Spare Parts</title>
+  <style>
+    * { box-sizing: border-box; font-family: Inter, Arial, sans-serif; }
+    body { margin: 0; background: #F6F7FB; color: #232323; }
+
+    /* ===== Header ===== */
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 24px; background: #fff;
+      border-bottom: 1px solid #E0E0E0;
+    }
+    .back-arrow { font-size: 22px; cursor: pointer; }
+    .back-arrow:hover { animation: bounce 0.6s; }
+    @keyframes bounce {
+      0% { transform: translateX(0); }
+      50% { transform: translateX(-6px); }
+      100% { transform: translateX(0); }
+    }
+    header h1 { font-size: 24px; font-weight: 700; margin: 0; }
+
+    /* ===== Layout ===== */
+    .container {
+      display: flex; gap: 20px;
+      padding: 24px; flex-wrap: wrap;
+    }
+    .form-panel { flex: 3; background: #E5E8FF; padding: 28px; border-radius: 12px; }
+    .preview-panel { flex: 2; background: #E5E8FF; padding: 20px; border-radius: 12px; display: none; }
+
+    /* ===== Form ===== */
+    .field { margin-bottom: 16px; }
+    .field label { font-size: 13px; color: #4A4A4A; display: block; margin-bottom: 6px; }
+    .req { color: red; }
+    .field input, .field select {
+      width: 100%; height: 44px; padding: 0 12px;
+      border-radius: 6px; border: 1px solid #D0D3E2; background: #fff;
+      font-size: 14px;
+    }
+
+    /* ===== Buttons ===== */
+    .buttons { display: flex; gap: 14px; justify-content: center; margin-top: 24px; }
+    .btn-add {
+      width: 127px; height: 48px; background: #91B3FA; color: #343434;
+      border: none; border-radius: 8px; cursor: pointer;
+    }
+    .btn-cancel {
+      width: 127px; height: 48px; background: #fff; color: #616161;
+      border: 1px solid #CFCFCF; border-radius: 8px; cursor: pointer;
+    }
+
+    /* ===== Preview ===== */
+    .cards { max-height: 400px; overflow-y: auto; }
+    .cards::-webkit-scrollbar { width: 8px; }
+    .cards::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+    .cards::-webkit-scrollbar-thumb:hover { background: #555; }
+
+    .card {
+      background: #F2F2F2; border: 1px solid #ccc; border-radius: 5px;
+      padding: 10px; margin: 10px; height: 210px; position: relative;
+    }
+    .card h5 { font-size: 18px; margin: 0 0 6px; }
+    .close { position: absolute; top: 6px; right: 8px; cursor: pointer; }
+
+    .save-all {
+      display: block; margin: 16px auto 0;
+      background: #2A00B2; color: #fff; border: none;
+      padding: 12px 24px; border-radius: 6px; cursor: pointer;
+    }
+
+    .toast {
+      position: fixed; bottom: 20px; right: 20px;
+      background: #2A00B2; color: #fff;
+      padding: 12px 20px; border-radius: 6px; display: none;
+    }
+
+    @media (max-width: 900px) { .container { flex-direction: column; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="back-arrow" id="back">←</span>
+  <h1>Add Spare Parts</h1>
+</header>
+
+<div class="container">
+  <!-- ===== Left Form ===== -->
+  <div class="form-panel">
+    <div class="field"><label>Part Name <span class="req">*</span></label><input id="name" placeholder="Part Name"></div>
+    <div class="field"><label>Part Code <span class="req">*</span></label><input id="code" placeholder="Part Code"></div>
+    <div class="field"><label>Description <span class="req">*</span></label><input id="desc" placeholder="Part Description"></div>
+    <div class="field"><label>Price (AED) <span class="req">*</span></label><input id="price" placeholder="Price"></div>
+    <div class="field"><label>Qty <span class="req">*</span></label><input id="qty" placeholder="Quantity"></div>
+    <div class="field"><label>Supplier <span class="req">*</span></label><select id="supplier"><option value="">Select...</option></select></div>
+    <div class="field"><label>Exp Date <span class="req">*</span></label><input type="date" id="exp"></div>
+
+    <div class="buttons">
+      <button class="btn-add" id="add">Add</button>
+      <button class="btn-cancel" id="cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ===== Right Preview ===== -->
+  <div class="preview-panel" id="preview">
+    <div class="cards" id="cards"></div>
+    <button class="save-all" id="saveAll">Save</button>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved successfully</div>
+
+<script>
+  const userId = location.pathname.split('/').pop();
+
+  const config = JSON.parse(localStorage.getItem('config')) || { currency: 'AED', dateFormat: 'DD-MM-YYYY' };
+  // --- Seed suppliers if not present ---
+  if (!localStorage.getItem('suppliers')) {
+    localStorage.setItem('suppliers', JSON.stringify([
+      { id: 'sup_001', name: 'ABC Auto Parts', active: true },
+      { id: 'sup_002', name: 'Global Spare Solutions', active: true },
+      { id: 'sup_003', name: 'FastTrack Motors', active: true },
+      { id: 'sup_004', name: 'Prime Mechanical Supplies', active: false }
+    ]));
+  }
+
+  const suppliers = JSON.parse(localStorage.getItem('suppliers')) || [];
+
+  const supplierSel = document.getElementById('supplier');
+  suppliers.filter(s => s.active).forEach(s => {
+    const o = document.createElement('option'); o.value = s.id; o.textContent = s.name;
+    supplierSel.appendChild(o);
+  });
+
+  const spareParts = JSON.parse(sessionStorage.getItem('spareParts')) || [];
+
+  const preview = document.getElementById('preview');
+  const cards = document.getElementById('cards');
+
+  const name = document.getElementById('name');
+  const code = document.getElementById('code');
+  const desc = document.getElementById('desc');
+  const priceInput = document.getElementById('price');
+  const qtyInput = document.getElementById('qty');
+  const exp = document.getElementById('exp');
+
+  exp.min = new Date().toISOString().split('T')[0];
+
+  function formatDate(d) {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;
+  }
+
+  function formatMoney(v) {
+    return `${config.currency} ${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  }
+
+  function render() {
+    cards.innerHTML = '';
+    if (!spareParts.length) { preview.style.display = 'none'; return; }
+    preview.style.display = 'block';
+
+    spareParts.forEach((p,i)=>{
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `
+        <span class="close" data-i="${i}">×</span>
+        <h5>${p.name}</h5>
+        <div><b>Part Code:</b> ${p.partNumber}</div>
+        <div><b>Description:</b> ${p.description}</div>
+        <div><b>Price:</b> ${formatMoney(p.price)}</div>
+        <div><b>Quantity:</b> ${p.quantity}</div>
+        <div><b>Supplier:</b> ${suppliers.find(s=>s.id===p.vendor)?.name||''}</div>
+        <div><b>Exp Date:</b> ${formatDate(p.expiryDate)}</div>
+        <div><b>Total Cost:</b> ${formatMoney(p.cost)}</div>`;
+      cards.appendChild(c);
+    });
+  }
+
+  cards.onclick = e => {
+    if (e.target.classList.contains('close')) {
+      spareParts.splice(e.target.dataset.i,1);
+      sessionStorage.setItem('spareParts', JSON.stringify(spareParts));
+    // also persist to localStorage for visibility
+    localStorage.setItem('spareParts', JSON.stringify(spareParts));
+      render();
+    }
+  };
+
+  document.getElementById('add').onclick = () => {
+    if (![name,code,desc,priceInput,qtyInput,exp,supplierSel].every(i=>i.value)) {
+      alert('All fields are required'); return;
+    }
+
+    const price = parseFloat(priceInput.value);
+    const qty = parseFloat(qtyInput.value);
+
+    spareParts.push({
+      name: name.value,
+      partNumber: code.value,
+      description: desc.value,
+      price, quantity: qty,
+      cost: price * qty,
+      vendor: supplierSel.value,
+      expiryDate: exp.value,
+      active: true
+    });
+
+    sessionStorage.setItem('spareParts', JSON.stringify(spareParts));
+    // also persist to localStorage for visibility
+    localStorage.setItem('spareParts', JSON.stringify(spareParts));
+
+    // Clear form AFTER Add to allow new entry
+    name.value = '';
+    code.value = '';
+    desc.value = '';
+    priceInput.value = '';
+    qtyInput.value = '';
+    supplierSel.value = '';
+    exp.value = '';
+
+    render();
+  };
+
+  document.getElementById('saveAll').onclick = () => {
+    if (!spareParts.length) return;
+
+    // clear temp storage
+    sessionStorage.removeItem('spareParts');
+
+    // clear form fields
+    name.value = '';
+    code.value = '';
+    desc.value = '';
+    priceInput.value = '';
+    qtyInput.value = '';
+    supplierSel.value = '';
+    exp.value = '';
+
+    // clear preview
+    spareParts.length = 0;
+    render();
+
+    // success toast
+    const toast = document.getElementById('toast');
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 1200);
+
+    // navigate back
+    setTimeout(() => {
+      location.href = `/app/settings/spareparts/${userId}`;
+    }, 1300);
+  };
+
+  function confirmLeave() {
+    if (spareParts.length && !confirm('Unsaved parts will be lost. Continue?')) return false;
+    return true;
+  }
+
+  back.onclick = cancel.onclick = () => {
+    if (confirmLeave()) location.href = `/app/settings/spareparts/${userId}`;
+  };
+
+  render();
+</script>
+</body>
+</html>
